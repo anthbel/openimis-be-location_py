@@ -2,6 +2,7 @@ from django.core.cache import caches
 from django_redis.cache import RedisCache
 import uuid
 from core.models import CachedManager
+from django.apps import apps
 from django.conf import settings
 from django.db import models, transaction
 from django.dispatch import receiver
@@ -17,6 +18,11 @@ from django.db.models import Count, F, Q
 logger = logging.getLogger(__file__)
 LOCATION_CACHE = "location"
 cache = caches[LOCATION_CACHE]
+
+
+def medical_pricelist_installed():
+    """True when the medical_pricelist app is in INSTALLED_APPS."""
+    return apps.is_installed("medical_pricelist")
 
 
 # Reads and writes go through core.cache_control: entries expire (CACHE_OBJECT_TTL),
@@ -582,22 +588,24 @@ class HealthFacility(core_models.VersionedModel, core_models.ExtendableModel):
 
     care_type = models.CharField(db_column="HFCareType", max_length=1)
 
-    services_pricelist = models.ForeignKey(
-        "medical_pricelist.ServicesPricelist",
-        models.DO_NOTHING,
-        db_column="PLServiceID",
-        blank=True,
-        null=True,
-        related_name="health_facilities",
-    )
-    items_pricelist = models.ForeignKey(
-        "medical_pricelist.ItemsPricelist",
-        models.DO_NOTHING,
-        db_column="PLItemID",
-        blank=True,
-        null=True,
-        related_name="health_facilities",
-    )
+    # The price list relations exist only in assemblies that install medical_pricelist.
+    if medical_pricelist_installed():
+        services_pricelist = models.ForeignKey(
+            "medical_pricelist.ServicesPricelist",
+            models.DO_NOTHING,
+            db_column="PLServiceID",
+            blank=True,
+            null=True,
+            related_name="health_facilities",
+        )
+        items_pricelist = models.ForeignKey(
+            "medical_pricelist.ItemsPricelist",
+            models.DO_NOTHING,
+            db_column="PLItemID",
+            blank=True,
+            null=True,
+            related_name="health_facilities",
+        )
     offline = models.BooleanField(db_column="OffLine", default=False)
     # row_id = models.BinaryField(db_column='RowID', blank=True, null=True)
     audit_user_id = models.IntegerField(db_column="AuditUserID")

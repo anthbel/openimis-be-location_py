@@ -15,7 +15,10 @@ from location.models import (
     HealthFacility,
     HealthFacilityCatchment,
     UserDistrict,
+    medical_pricelist_installed,
 )
+
+HEALTH_FACILITY_PRICELIST_KEYS = ("services_pricelist_id", "items_pricelist_id")
 
 
 def check_authentication(function):
@@ -181,6 +184,8 @@ class HealthFacilityService:
             "status" in data and data["status"] not in HealthFacility.HealthFacilityStatus
         ):
             raise ValidationError(_("mutation.incorrect_hf_status"))
+        if not medical_pricelist_installed():
+            self._drop_pricelist_keys(data)
         hf_uuid = data.pop("uuid") if "uuid" in data else None
         catchments = data.pop("catchments") if "catchments" in data else []
         # address may be multiline > sent as JSON
@@ -233,6 +238,16 @@ class HealthFacilityService:
             )
 
     @staticmethod
+    def _drop_pricelist_keys(data):
+        """Refuses a non-null price list id and removes null price list keys from data."""
+        if any(data.get(key) is not None for key in HEALTH_FACILITY_PRICELIST_KEYS):
+            raise ValidationError(
+                _("Health facility price lists are not available: the medical_pricelist module is not installed")
+            )
+        for key in HEALTH_FACILITY_PRICELIST_KEYS:
+            data.pop(key, None)
+
+    @staticmethod
     def _reset_health_facility_before_update(hf):
         hf.code = None
         hf.name = None
@@ -246,5 +261,6 @@ class HealthFacilityService:
         hf.fax = None
         hf.email = None
         hf.care_type = None
-        hf.services_pricelist = None
-        hf.items_pricelist = None
+        if medical_pricelist_installed():
+            hf.services_pricelist = None
+            hf.items_pricelist = None

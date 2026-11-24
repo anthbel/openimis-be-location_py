@@ -8,28 +8,45 @@ import uuid
 
 
 class Migration(migrations.Migration):
+    from django.apps import apps
+
+    # The price list fields and their dependency apply only when medical_pricelist is installed.
+    try:
+        ServicesPricelist = apps.get_model("medical_pricelist", "ServicesPricelist")
+    except LookupError:
+        ServicesPricelist = None
 
     dependencies = [
         ("location", "0010_insert_create_region_location_perms"),
-        ("medical_pricelist", "0002_itemspricelistmutation_servicespricelistmutation"),
     ]
+
+    if ServicesPricelist:
+        dependencies.append(
+            ("medical_pricelist", "0002_itemspricelistmutation_servicespricelistmutation")
+        )
 
     operations = [
         migrations.RemoveField(
             model_name="healthfacility",
             name="row_id",
         ),
-        migrations.AddField(
-            model_name="healthfacility",
-            name="items_pricelist",
-            field=models.ForeignKey(
-                blank=True,
-                db_column="PLItemID",
-                null=True,
-                on_delete=django.db.models.deletion.DO_NOTHING,
-                related_name="health_facilities",
-                to="medical_pricelist.itemspricelist",
-            ),
+        *(
+            [
+                migrations.AddField(
+                    model_name="healthfacility",
+                    name="items_pricelist",
+                    field=models.ForeignKey(
+                        blank=True,
+                        db_column="PLItemID",
+                        null=True,
+                        on_delete=django.db.models.deletion.DO_NOTHING,
+                        related_name="health_facilities",
+                        to="medical_pricelist.itemspricelist",
+                    ),
+                ),
+            ]
+            if ServicesPricelist
+            else []
         ),
         migrations.AddField(
             model_name="healthfacility",
@@ -54,17 +71,23 @@ class Migration(migrations.Migration):
             ),
             preserve_default=False,
         ),
-        migrations.AddField(
-            model_name="healthfacility",
-            name="services_pricelist",
-            field=models.ForeignKey(
-                blank=True,
-                db_column="PLServiceID",
-                null=True,
-                on_delete=django.db.models.deletion.DO_NOTHING,
-                related_name="health_facilities",
-                to="medical_pricelist.servicespricelist",
-            ),
+        *(
+            [
+                migrations.AddField(
+                    model_name="healthfacility",
+                    name="services_pricelist",
+                    field=models.ForeignKey(
+                        blank=True,
+                        db_column="PLServiceID",
+                        null=True,
+                        on_delete=django.db.models.deletion.DO_NOTHING,
+                        related_name="health_facilities",
+                        to="medical_pricelist.servicespricelist",
+                    ),
+                ),
+            ]
+            if ServicesPricelist
+            else []
         ),
         migrations.AddField(
             model_name="healthfacility",
