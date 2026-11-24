@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import types
+import unittest
 from unittest import mock
 
 from django.apps import apps
@@ -166,6 +167,7 @@ class MedicalPricelistAbsentTest(TestCase):
         self.assertIsNone(hf.care_type)
 
 
+@unittest.skipUnless(apps.is_installed(PRICELIST_APP), "medical_pricelist is not installed")
 class MedicalPricelistInstalledTest(TestCase):
     @classmethod
     def setUpTestData(cls):
