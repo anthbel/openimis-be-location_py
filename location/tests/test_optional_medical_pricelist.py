@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import types
 import unittest
@@ -7,7 +8,9 @@ from unittest import mock
 from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from graphql_relay import to_global_id
 
+from core.rights_role_test_case import RightsRoleGraphQLTestCase
 from core.test_helpers import create_imis_admin_role, create_test_interactive_user
 from location.gql_mutations import (
     CreateHealthFacilityMutation,
@@ -246,3 +249,58 @@ class MedicalPricelistInstalledTest(TestCase):
         self.hf.refresh_from_db()
         self.assertEqual(self.hf.services_pricelist_id, self.services_pricelist.id)
         self.assertEqual(self.hf.items_pricelist_id, self.items_pricelist.id)
+
+
+HF_PRICELIST_QUERY = """
+    query {
+        healthFacilities(first: 5) {
+            edges { node { id servicesPricelist { id uuid name } itemsPricelist { id uuid } } }
+        }
+    }
+"""
+
+
+class HealthFacilityPricelistGraphQLTest(RightsRoleGraphQLTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.user = create_test_interactive_user(username="tstHfPricelistGql")
+        cls.district = create_test_location("D")
+        cls.hf = create_test_health_facility("GQLPLHF", cls.district.id)
+
+    def _nodes(self):
+        headers, _token = self.bearer(self.user)
+        response = self.query(HF_PRICELIST_QUERY, headers=headers)
+        self.assertResponseNoErrors(response)
+        edges = json.loads(response.content)["data"]["healthFacilities"]["edges"]
+        return [e["node"] for e in edges]
+
+    @unittest.skipIf(apps.is_installed(PRICELIST_APP), "medical_pricelist is installed")
+    def test_pricelist_fields_resolve_to_null_without_medical_pricelist(self):
+        nodes = self._nodes()
+        self.assertTrue(nodes)
+        for node in nodes:
+            self.assertIsNone(node["servicesPricelist"])
+            self.assertIsNone(node["itemsPricelist"])
+
+    @unittest.skipUnless(apps.is_installed(PRICELIST_APP), "medical_pricelist is not installed")
+    def test_pricelist_fields_resolve_from_model_with_medical_pricelist(self):
+        from medical_pricelist.test_helpers import (
+            create_test_item_pricelist,
+            create_test_service_pricelist,
+        )
+
+        services = create_test_service_pricelist(self.district.id)
+        items = create_test_item_pricelist(self.district.id)
+        HealthFacility.objects.filter(pk=self.hf.pk).update(
+            services_pricelist=services, items_pricelist=items
+        )
+        node = next(n for n in self._nodes() if n["id"])
+        self.assertEqual(
+            node["servicesPricelist"]["id"],
+            to_global_id("ServicesPricelistGQLType", services.id),
+        )
+        self.assertEqual(
+            node["itemsPricelist"]["id"],
+            to_global_id("ItemsPricelistGQLType", items.id),
+        )

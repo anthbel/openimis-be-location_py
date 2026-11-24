@@ -14,6 +14,7 @@ from location.models import (
     HealthFacility,
     UserDistrict,
     OfficerVillage,
+    medical_pricelist_installed,
 )
 from django.db.models import Field
 from core.gql import ScopedQuerysetMixin
@@ -97,8 +98,29 @@ class HealthFacilityCatchmentGQLType(ScopedQuerysetMixin, DjangoObjectType):
         model = HealthFacilityCatchment
 
 
+class PricelistReferenceGQLType(graphene.ObjectType):
+    """Shape of a price list reference, served as null when medical_pricelist is absent."""
+
+    id = graphene.Int()
+    uuid = graphene.String()
+    name = graphene.String()
+
+
 class HealthFacilityGQLType(DjangoObjectType):
     client_mutation_id = graphene.String()
+
+    # Clients query the price list fields of a health facility unconditionally.
+    # Without medical_pricelist the model has no such relations, so the fields
+    # are declared here and resolve to null.
+    if not medical_pricelist_installed():
+        services_pricelist = graphene.Field(PricelistReferenceGQLType)
+        items_pricelist = graphene.Field(PricelistReferenceGQLType)
+
+        def resolve_services_pricelist(self, info):
+            return None
+
+        def resolve_items_pricelist(self, info):
+            return None
 
     class Meta:
         model = HealthFacility
