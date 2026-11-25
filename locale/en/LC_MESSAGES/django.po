@@ -99,7 +99,3 @@ msgstr "Incorrect health facility status"
 #: location/services.py:193
 msgid "cannot_update_historical_hf"
 msgstr "Cannot update historical hf"
-
-#: location/services.py:244
-msgid "mutation.health_facility_pricelists_unavailable"
-msgstr "Health facility price lists are not available: the medical_pricelist module is not installed"

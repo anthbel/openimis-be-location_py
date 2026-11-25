@@ -241,7 +241,9 @@ class HealthFacilityService:
     def _drop_pricelist_keys(data):
         """Refuses a non-null price list id and removes null price list keys from data."""
         if any(data.get(key) is not None for key in HEALTH_FACILITY_PRICELIST_KEYS):
-            raise ValidationError(_("mutation.health_facility_pricelists_unavailable"))
+            raise ValidationError(
+                _("Health facility price lists are not available: the medical_pricelist module is not installed")
+            )
         for key in HEALTH_FACILITY_PRICELIST_KEYS:
             data.pop(key, None)
 
