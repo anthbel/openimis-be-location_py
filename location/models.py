@@ -588,7 +588,8 @@ class HealthFacility(core_models.VersionedModel, core_models.ExtendableModel):
 
     care_type = models.CharField(db_column="HFCareType", max_length=1)
 
-    # The price list relations exist only in assemblies that install medical_pricelist.
+    # The price list relations exist only in assemblies that install medical_pricelist;
+    # without it they are attributes returning None.
     if medical_pricelist_installed():
         services_pricelist = models.ForeignKey(
             "medical_pricelist.ServicesPricelist",
@@ -606,6 +607,16 @@ class HealthFacility(core_models.VersionedModel, core_models.ExtendableModel):
             null=True,
             related_name="health_facilities",
         )
+    else:
+        # Read-only stand-ins: consumers such as core's REST serializers read these attributes.
+        @property
+        def services_pricelist(self):
+            return None
+
+        @property
+        def items_pricelist(self):
+            return None
+
     offline = models.BooleanField(db_column="OffLine", default=False)
     # row_id = models.BinaryField(db_column='RowID', blank=True, null=True)
     audit_user_id = models.IntegerField(db_column="AuditUserID")

@@ -6,12 +6,18 @@ import unittest
 from unittest import mock
 
 from django.apps import apps
-from django.core.exceptions import ValidationError
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.test import TestCase
+from django.utils.translation import gettext
 from graphql_relay import to_global_id
 
 from core.rights_role_test_case import RightsRoleGraphQLTestCase
-from core.test_helpers import create_imis_admin_role, create_test_interactive_user
+from core.serializers import UserSerializer
+from core.test_helpers import (
+    create_imis_admin_role,
+    create_test_claim_admin,
+    create_test_interactive_user,
+)
 from location.gql_mutations import (
     CreateHealthFacilityMutation,
     UpdateHealthFacilityMutation,
@@ -30,7 +36,7 @@ PRICELIST_DEPENDENCY = (
     "0002_itemspricelistmutation_servicespricelistmutation",
 )
 PRICELIST_FIELDS = {"services_pricelist", "items_pricelist"}
-PRICELIST_REFUSAL = "medical_pricelist module is not installed"
+PRICELIST_REFUSAL_KEY = "mutation.health_facility_pricelists_unavailable"
 MIGRATION_0011 = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "migrations",
@@ -88,6 +94,43 @@ class HealthFacilityPricelistFieldsTest(TestCase):
         self.assertEqual(
             bool(PRICELIST_FIELDS & field_names), apps.is_installed(PRICELIST_APP)
         )
+        for name in PRICELIST_FIELDS:
+            if apps.is_installed(PRICELIST_APP):
+                self.assertEqual(HealthFacility._meta.get_field(name).name, name)
+            else:
+                with self.assertRaises(FieldDoesNotExist):
+                    HealthFacility._meta.get_field(name)
+
+
+@unittest.skipIf(apps.is_installed(PRICELIST_APP), "medical_pricelist is installed")
+class HealthFacilityPricelistAttributesTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.district = create_test_location("D")
+        cls.hf = create_test_health_facility("ATTRHF", cls.district.id)
+
+    def test_attributes_return_none(self):
+        hf = HealthFacility.objects.get(pk=self.hf.pk)
+        self.assertIsNone(hf.services_pricelist)
+        self.assertIsNone(hf.items_pricelist)
+
+    def test_attributes_are_read_only(self):
+        with self.assertRaises(AttributeError):
+            self.hf.services_pricelist = None
+        with self.assertRaises(AttributeError):
+            self.hf.items_pricelist = None
+
+    def test_user_serializer_of_claim_admin_serves_null_pricelists(self):
+        user = create_test_interactive_user(username="tstCaHfNoPl")
+        user.claim_admin = create_test_claim_admin(
+            custom_props={"code": "CAHFNOPL", "has_login": True, "health_facility": self.hf}
+        )
+        user.save(silent=True)
+        data = UserSerializer(user).data
+        health_facility = data["claim_admin"]["healthFacility"]
+        self.assertEqual(health_facility["code"], self.hf.code)
+        self.assertIsNone(health_facility["servicesPricelist"])
+        self.assertIsNone(health_facility["itemsPricelist"])
 
 
 class MedicalPricelistAbsentTest(TestCase):
@@ -120,7 +163,7 @@ class MedicalPricelistAbsentTest(TestCase):
         with without_medical_pricelist():
             errors = CreateHealthFacilityMutation.async_mutate(self.user, **data)
         self.assertIsNotNone(errors)
-        self.assertIn(PRICELIST_REFUSAL, errors[0]["detail"])
+        self.assertIn(gettext(PRICELIST_REFUSAL_KEY), errors[0]["detail"])
         self.assertFalse(HealthFacility.objects.filter(code="NOPLC1").exists())
 
     def test_update_mutation_refuses_items_pricelist_id(self):
@@ -135,7 +178,7 @@ class MedicalPricelistAbsentTest(TestCase):
         with without_medical_pricelist():
             errors = UpdateHealthFacilityMutation.async_mutate(self.user, **data)
         self.assertIsNotNone(errors)
-        self.assertIn(PRICELIST_REFUSAL, errors[0]["detail"])
+        self.assertIn(gettext(PRICELIST_REFUSAL_KEY), errors[0]["detail"])
         self.hf.refresh_from_db()
         self.assertNotEqual(self.hf.name, "Renamed NOPLHF")
 
@@ -145,7 +188,7 @@ class MedicalPricelistAbsentTest(TestCase):
         )
         data.update(audit_user_id=-1, validity_from="2019-01-01")
         with without_medical_pricelist():
-            with self.assertRaisesMessage(ValidationError, PRICELIST_REFUSAL):
+            with self.assertRaisesMessage(ValidationError, gettext(PRICELIST_REFUSAL_KEY)):
                 HealthFacilityService(self.user).update_or_create(data)
 
     def test_create_mutation_ignores_null_pricelist_ids(self):

@@ -39,3 +39,12 @@ None
 
 ## openIMIS Modules Dependencies
 * core.models.InteractiveUser
+## Running without medical and medical_pricelist
+The `services_pricelist` and `items_pricelist` foreign keys of `HealthFacility` are declared only when
+the `medical_pricelist` app is installed. Without it they are read-only attributes returning `None`,
+the GraphQL fields `servicesPricelist` and `itemsPricelist` resolve to null, and the health facility
+mutations refuse a non-null `servicesPricelistId` or `itemsPricelistId`.
+
+The choice is made by the first `migrate` of a database. Adding `medical_pricelist` to a database that was
+migrated without it is not supported: `migrate` fails with `InconsistentMigrationHistory`
+(`location.0011` is recorded as applied before `medical_pricelist.0002`).
